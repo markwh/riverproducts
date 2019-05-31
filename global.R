@@ -17,6 +17,7 @@ library(crosstalk)
 library(DT)
 library(gdata)
 library(RColorBrewer)
+library(geosphere)
 
 
 theme_set(theme_bw())
@@ -48,6 +49,9 @@ load("rdata/clsf1.RData")
 load("rdata/clsf2.RData")
 load("rdata/nodesf1.RData")
 load("rdata/nodesf2.RData")
+load("rdata/add_swot_tile.RData")
+load("rdata/getTileCorners.RData")
+load("rdata/tilelist.RData")
 clsf <- clsf2
 nodesf <- nodesf2
 

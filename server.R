@@ -7,6 +7,7 @@ function(input, output, session) {
   output$map <- renderLeaflet({
     basemap <- leaflet() %>% 
       addTiles() %>% 
+      # addPolygons(data = sf::as_Spatial(tilesf$geometry)) %>% 
       leaflet::fitBounds(lng1 = sacbbox$xmax, lat1 = sacbbox$ymax, 
                          lng2 = sacbbox$xmin, lat2 = sacbbox$ymin)
       
@@ -57,7 +58,40 @@ function(input, output, session) {
     proxy
   })
   
+  # Observer for tiles
+  observeEvent("tiles" %in% input$maplayers, {
+    proxy <- leafletProxy("map")
+    # browser()
+    if ("tiles" %in% input$maplayers) {
+      proxy <- proxy %>% 
+        add_swot_tile(tilelist$`51`$nadir1, tilelist$`51`$nadir2, 
+                      tilelist$`51`$heading, tilelist$`51`$half,
+                      group = "tiles", stroke = FALSE, 
+                      fillColor = passpal("249")) %>% 
+        add_swot_tile(tilelist$`52`$nadir1, tilelist$`52`$nadir2, 
+                      tilelist$`52`$heading, tilelist$`52`$half,
+                      group = "tiles", stroke = FALSE, 
+                      fillColor = passpal("264")) %>% 
+        add_swot_tile(tilelist$`53`$nadir1, tilelist$`53`$nadir2, 
+                      tilelist$`53`$heading, tilelist$`53`$half,
+                      group = "tiles", stroke = FALSE, 
+                      fillColor = passpal("264")) %>% 
+        add_swot_tile(tilelist$`54`$nadir1, tilelist$`54`$nadir2, 
+                      tilelist$`54`$heading, tilelist$`54`$half,
+                      group = "tiles", stroke = FALSE, 
+                      fillColor = passpal("527"))
+    } else {
+      proxy <- proxy %>% 
+        clearGroup("tiles")
+    }
+    
+    proxy
+  })
+  
   # Observer for nodes in tile on map
+  sprstring_node <- paste(c("node_index", "reach_index", "height", "width",
+                            "area_total", "xtrk_dist", ""), 
+                          collapse = ": %s<br/>")
   observeEvent("rt_node" %in% input$maplayers, {
     proxy <- leafletProxy("map")
     if ("rt_node" %in% input$maplayers) {
@@ -65,6 +99,8 @@ function(input, output, session) {
         addCircles(~longitude, ~latitude, fillColor = ~reachpal(reach_id), 
                    radius = ~sqrt(area_total / pi), 
                    stroke = FALSE, fillOpacity = 0.9, data = node_df(), 
+                   popup = ~sprintf(sprstring_node, node_id, reach_id, height,
+                                    width, area_total, xtrk_dist),
                    group = "nodedata")
     } else {
       proxy <- proxy %>% 
@@ -75,7 +111,7 @@ function(input, output, session) {
   })
   
   # Observer for pixc, pixcvec
-  sprstring <- paste(c("node_index", "height", "pixel_area", "water_frac",
+  sprstring_pix <- paste(c("node_index", "height", "pixel_area", "water_frac",
                        "cross_track", ""), collapse = ": %s<br/>")
   pixlyr <- FALSE
   pixreach <- 1
@@ -93,7 +129,7 @@ function(input, output, session) {
     if (!length(file_dir()) || !("pixels" %in% input$maplayers)) return(proxy)
     proxy <- proxy %>% 
       addCircles(~longitude, ~latitude, fillColor = ~classpal(classification), 
-                 popup = ~sprintf(sprstring, node_index, height, 
+                 popup = ~sprintf(sprstring_pix, node_index, height, 
                                   pixel_area, water_frac, cross_track), 
                  radius = ~sqrt(pixel_area / pi), 
                  stroke = FALSE, fillOpacity = 0.9, 
@@ -125,8 +161,29 @@ function(input, output, session) {
     proxy
   })
   
-  # Reach product
+  # Observer for Reach product centerlines
+  sprstring_reach <- paste(c("reach_id", "height", "width", "slope",
+                            "area", ""), 
+                          collapse = ": %s<br/>")
+  observeEvent("rt_reach" %in% input$maplayers, {
+    proxy <- leafletProxy("map")
 
+    if ("rt_reach" %in% input$maplayers) {
+      reachdata <- clsf %>% 
+        right_join(reach_df(), by = "reach_id")
+      # browser()
+      proxy <- proxy %>% 
+        addPolylines(color = ~reachpal(reach_id), weight = 3, data = reachdata, 
+                     opacity = 0.85, group = "reaches", 
+                     popup = ~sprintf(sprstring_reach, reach_id, height, width,
+                                      slope, area_total))
+    } else {
+      proxy <- proxy %>% 
+        clearGroup("reaches")
+    }
+    
+    return(proxy)
+  })
 
   # UI defaults per tab -----------------------------------------------------
   observeEvent(input$tabpan1, {
@@ -144,6 +201,7 @@ function(input, output, session) {
   })
   file_table <- reactive({
     filedf <- get_files_info(file_dir())
+    # rownames(filedf) <- NULL
     filedf
   })
   
@@ -155,7 +213,7 @@ function(input, output, session) {
   
   output$file_table <- renderDT({
     file_table()
-  }, selection = "single")
+  }, selection = "single", rownames = FALSE)
   
   output$file_structure <- renderText({
     file_summaries()[[input$file_table_rows_selected]]
@@ -232,7 +290,7 @@ function(input, output, session) {
   output$tile_table <- renderDT({
     dplyr::transmute(rundf, 
                      pass, tile, date)
-  }, selection = "single")
+  }, selection = "single", rownames= FALSE)
   
   # Node data
   output$node_dt <- renderDT({
@@ -242,7 +300,7 @@ function(input, output, session) {
     } else {
       node_df()
     }
-  }, options = list(scrollX = TRUE, scrollY = TRUE))
+  }, options = list(scrollX = TRUE, scrollY = TRUE), rownames = FALSE)
 
   # Reach data
   output$reach_dt <- renderDT({
@@ -253,7 +311,8 @@ function(input, output, session) {
       reach_df()
     }
   }, options = list(scrollX = TRUE, scrollY = TRUE),
-     selection = list(mode = "single", target = "column"))
+     selection = list(mode = "single", target = "column"), 
+  rownames = FALSE)
   
   # Pixel data
   output$pixc_dt <- renderDT({
@@ -264,7 +323,8 @@ function(input, output, session) {
       pixc_df()
     }
   }, options = list(scrollX = TRUE, scrollY = TRUE),
-  selection = list(mode = "single", target = "column"))
+  selection = list(mode = "single", target = "column"),
+  rownames = FALSE)
   
   
 }
