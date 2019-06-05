@@ -7,3 +7,5 @@ This application is a demonstration of river data products from the SWOT satelli
 We rely on some a priori information about the SWOT-observable rivers, independent of satellite observations. This includes geographic information about river centerlines, as well as definitions of the reaches and nodes to which SWOT observations will be assigned. 
 
 You can zoom in and out on the map at left to see prior-defined nodes and reaches in the Sacramento River case. 
+
+*Note: These nodes, reaches, and centerlines were modified, and their IDs and locations do not correspond to the actual prior database nodes and reaches.*

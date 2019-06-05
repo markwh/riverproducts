@@ -12,51 +12,59 @@ sidebar <- dashboardSidebar(
 
 body <- dashboardBody(
   fluidRow(
-    column(width = 6, title = "Map",
+    column(width = 5, title = "Map",
            leafletOutput("map", height = 700)),
-    column(width = 6, title = "tabset1", 
+    column(width = 7, title = "tabset1", 
            tabsetPanel(id = "tabpan1",
-                       tabPanel("Prior DB"),
+                       tabPanel("Prior DB",
+                                includeMarkdown("mdfiles/priordb.md")),
                        tabPanel("Passes/Tiles",
-                                # checkboxInput("show_passes", "Show Passes"),
                                 DT::DTOutput("tile_table"),
-                                # actionButton("load_tile", "Load Selected Tile"),
-                                plotOutput("xtk_gg")),
-                       tabPanel("Files",
-                                DT::DTOutput("file_table"),
-                                textOutput("file_structure")),
+                                includeMarkdown("mdfiles/passes-tiles.md")),
+                       # tabPanel("Files",
+                       #          DT::DTOutput("file_table"),
+                       #          textOutput("file_structure")),
                        tabPanel("Pixels",
-                                # uiOutput("pixc_reach_slider")
-                                sliderInput("pixc_reach", "Reach to Show",
+                                includeMarkdown("mdfiles/pixels.md"),
+                                sliderInput("pixc_nodes", "Nodes to Show",
                                             min = 1, max = 1, 
                                             value = 1, step = 1)
                                 ),
                        tabPanel("Nodes",
+                                includeMarkdown("mdfiles/nodes.md"),
                                 fluidRow(
-                                  plotOutput("node_scatter1")
-                                )
-                                # fluidRow(
-                                #   box(
-                                #     # plotOutput("node_scatter2"))#,
-                                #     DTOutput("node_dt", width = 6)
-                                #   )
-                                # )
+                                  plotlyOutput("node_scatter1")
+                                ),
+                                radioButtons("node_yvar", "Y-axis variable",
+                                             choiceValues = node_yaxis_vals,
+                                             choiceNames = node_yaxis_names,
+                                             inline = TRUE),
+                                radioButtons("node_xvar", "X-axis variable",
+                                             choiceValues = node_xaxis_vals,
+                                             choiceNames = node_xaxis_names,
+                                             inline = TRUE)
                        ),
                        tabPanel("Reaches",
+                                includeMarkdown("mdfiles/reaches.md"),
                                 fluidRow(
-                                  plotOutput("reach_scatter1"),
-                                  plotOutput("reach_scatter2")
-                                ))
+                                  plotlyOutput("reach_scatter1")
+                                ),
+                                radioButtons("reach_yvar", "Y-axis variable",
+                                             choiceValues = reach_yaxis_vals,
+                                             choiceNames = reach_yaxis_names,
+                                             inline = TRUE),
+                                radioButtons("reach_xvar", "X-axis variable",
+                                             choiceValues = reach_xaxis_vals,
+                                             choiceNames = reach_xaxis_names,
+                                             inline = TRUE))
            ))
   ),
   fluidRow(
-    DTOutput("node_dt")
-  ),
-  fluidRow(
-    DTOutput("reach_dt")
-  ),
-  fluidRow(
-    DTOutput("pixc_dt")
+    column(width = 5,
+           htmlOutput("atts_info")),
+    column(width = 7,
+           fluidRow(DTOutput("data_dt"))
+    )
   )
 
 )

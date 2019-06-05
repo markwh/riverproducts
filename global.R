@@ -41,6 +41,20 @@ fmt_pixc_data <- function(node_index, height, pixel_area, water_frac, cross_trac
         sep = ": ", collapse = "<br/>")
 }
 
+fmt_atts <- function(attdf) {
+  if (!is.data.frame(attdf) || !nrow(attdf) == 1) return("")
+  attnames <- names(attdf)
+  attvals <- unname(attdf[1, ])
+  
+  naatts <- is.na(attvals)
+  attvals <- attvals[!naatts]
+  attnames <- attnames[!naatts]
+  
+  sprstr <- "<b>%s:</b><br/><i>%s</i>"
+  out <- paste(sprintf(sprstr, attnames, attvals), collapse = "<br/>")
+  out
+}
+
 # SLC simulation info
 load("rdata/rundf.RData")
 
@@ -64,7 +78,9 @@ load("rdata/xtkdf.RData")
 load("rdata/xtk_gg.RData")
 
 
-# File info
+
+# File info ---------------------------------------------------------------
+
 rodirs <- sprintf("./data/sac/%s", 51:54)
 
 splitPiece <- function (strvec, split, piece, ...) {
@@ -127,3 +143,34 @@ tablyrs <- list(
   map_layers[c(6)],
   map_layers[c(7)]
 ) %>% setNames(tabnames)
+
+
+
+# Plot axis, etc. defaults ------------------------------------------------
+
+# Nodes
+node_xaxis_vals <-  c("node_id", "xtrk_dist", 
+                      "width", "height", "area_total")
+node_xaxis_names <- c("Node ID", "Cross-track Dist",
+                     "Width", "Height", "Area")
+node_xaxis_units <- c("", " (m)", " (m)", " (m)", " (m^2)")
+
+
+node_yaxis_vals <-  c("width", "height", "area_total", "custom")
+node_yaxis_names <- c("Width", "Height", "Area", "Custom (from table)")
+node_yaxis_units <- c(" (m)", " (m)", " (m^2)", "")
+node_unc_vars <- c("width_u", "height_u", "area_tot_u", "")
+
+# Reaches
+reach_xaxis_vals <-  c("reach_id", "xtrk_dist", 
+                      "width", "height", "area_total")
+reach_xaxis_names <- c("Reach ID", "Cross-track Dist",
+                      "Width", "Height", "Area")
+reach_xaxis_units <- c("", " (m)", " (m)", " (m)", " (m^2)")
+
+
+reach_yaxis_vals <-  c("slope", "width", "height", "area_total", "custom")
+reach_yaxis_names <- c("Slope", "Width", "Height", "Area", "Custom (from table)")
+reach_yaxis_units <- c(" ( mm/km)", " (m)", " (m)", " (m^2)", "")
+reach_unc_vars <- c("slope_u", "width_u", "height_u", "area_tot_u", "")
+

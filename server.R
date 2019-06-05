@@ -20,6 +20,8 @@ function(input, output, session) {
       proxy <- proxy %>% 
         addCircles(fillColor = ~reachpal(reach_id), radius = 100, 
                    stroke = FALSE, fillOpacity = 0.4, data = nodesf, 
+                   popup = ~paste0("Node: ", node_id, "<br/>", 
+                                   "Reach: ", reach_id),
                    group = "priornodes")
     } else {
       proxy <- proxy %>% 
@@ -34,7 +36,8 @@ function(input, output, session) {
     if ("prior_ctl" %in% input$maplayers) {
       proxy <- proxy %>% 
         addPolylines(color = ~reachpal(reach_id), weight = 3, data = clsf, 
-                     opacity = 0.85, group = "priorcl")
+                     opacity = 0.85, group = "priorcl",
+                     popup = ~paste0("Reach: ", reach_id))
     } else {
       proxy <- proxy %>% 
         clearGroup("priorcl")
@@ -59,27 +62,31 @@ function(input, output, session) {
   })
   
   # Observer for tiles
-  observeEvent("tiles" %in% input$maplayers, {
+  observe({
+    req("tiles" %in% input$maplayers)
     proxy <- leafletProxy("map")
-    # browser()
     if ("tiles" %in% input$maplayers) {
       proxy <- proxy %>% 
         add_swot_tile(tilelist$`51`$nadir1, tilelist$`51`$nadir2, 
                       tilelist$`51`$heading, tilelist$`51`$half,
                       group = "tiles", stroke = FALSE, 
-                      fillColor = passpal("249")) %>% 
+                      fillColor = passpal("249"),
+                      popup = "Pass 249, Tile 001L") %>% 
         add_swot_tile(tilelist$`52`$nadir1, tilelist$`52`$nadir2, 
                       tilelist$`52`$heading, tilelist$`52`$half,
                       group = "tiles", stroke = FALSE, 
-                      fillColor = passpal("264")) %>% 
+                      fillColor = passpal("264"),
+                      popup = "Pass 264, Tile 001L") %>% 
         add_swot_tile(tilelist$`53`$nadir1, tilelist$`53`$nadir2, 
                       tilelist$`53`$heading, tilelist$`53`$half,
                       group = "tiles", stroke = FALSE, 
-                      fillColor = passpal("264")) %>% 
+                      fillColor = passpal("264"), 
+                      popup = "Pass 264, Tile 001R") %>% 
         add_swot_tile(tilelist$`54`$nadir1, tilelist$`54`$nadir2, 
                       tilelist$`54`$heading, tilelist$`54`$half,
                       group = "tiles", stroke = FALSE, 
-                      fillColor = passpal("527"))
+                      fillColor = passpal("527"),
+                      popup = "Pass 527, Tile 001R")
     } else {
       proxy <- proxy %>% 
         clearGroup("tiles")
@@ -87,6 +94,9 @@ function(input, output, session) {
     
     proxy
   })
+  
+  
+  
   
   # Observer for nodes in tile on map
   sprstring_node <- paste(c("node_index", "reach_index", "height", "width",
@@ -111,31 +121,33 @@ function(input, output, session) {
   })
   
   # Observer for pixc, pixcvec
-  sprstring_pix <- paste(c("node_index", "height", "pixel_area", "water_frac",
-                       "cross_track", ""), collapse = ": %s<br/>")
+  sprstring_pix <- paste(c("node_index", "classification", "height", 
+                           "pixel_area", "water_frac",
+                           "cross_track", ""), collapse = ": %s<br/>")
   pixlyr <- FALSE
-  pixreach <- 1
+  pixnode <- 1
   observe({
     newlyr <- "pixels" %in% input$maplayers
-    newreach <- input$pixc_reach
-    
+    newnode <- input$pixc_nodes
+    # browser()
     proxy <- leafletProxy("map")
-    if (pixlyr == newlyr && newreach == pixreach) return(proxy)
+    if (pixlyr == newlyr && newnode == pixnode) return(proxy)
     pixlyr <<- newlyr
-    pixreach <<- newreach
+    pixnode <<- newnode
     
     proxy <- proxy %>% 
       clearGroup("pixcdata")
     if (!length(file_dir()) || !("pixels" %in% input$maplayers)) return(proxy)
+    # browser()
     proxy <- proxy %>% 
       addCircles(~longitude, ~latitude, fillColor = ~classpal(classification), 
-                 popup = ~sprintf(sprstring_pix, node_index, height, 
+                 popup = ~sprintf(sprstring_pix, node_index, classification, height, 
                                   pixel_area, water_frac, cross_track), 
                  radius = ~sqrt(pixel_area / pi), 
                  stroke = FALSE, fillOpacity = 0.9, 
                  data = filter(pixc_df(), 
                                # reach_index == reach_index[1]),
-                               reach_index == cur_reaches()[input$pixc_reach]),
+                               node_index %in% (input$pixc_nodes + 0:15)),
                  group = "pixcdata")
     proxy
   })
@@ -152,8 +164,8 @@ function(input, output, session) {
     if ("pixels" %in% input$maplayers) {
       proxy <- proxy %>% 
         addLegend(position = "topright",
-                  colors = classpal(classes),
-                  labels = classlabs)
+                  colors = classpal(classes[-1]),
+                  labels = classlabs[-1])
     } else {
       proxy <- proxy %>% 
         clearControls()
@@ -185,12 +197,22 @@ function(input, output, session) {
     return(proxy)
   })
 
-  # UI defaults per tab -----------------------------------------------------
+  # UI elements per tab -----------------------------------------------------
+  # defaults
   observeEvent(input$tabpan1, {
     # browser()
     pan <- input$tabpan1
     updateCheckboxGroupInput(session, "maplayers", selected = tablyrs[[pan]])
   })
+  observe({
+    req(length(pixc_df()))
+    pixc_df()
+    updateSliderInput(session, "pixc_nodes", 
+                      min = min(pixc_df()$node_index, na.rm = TRUE),
+                      max = max(pixc_df()$node_index, na.rm =TRUE),
+                      value = 1)
+  })
+
 
   # Data objects for selected tile ----------------------------------------
   
@@ -221,25 +243,40 @@ function(input, output, session) {
   
   # Node product(netcdf)
   node_df <- reactive({
+    req(file_dir())
     rt_read(fs::path(file_dir(), "rivertile.nc"))
   })
   
   # Reach product(netcdf)
   reach_df <- reactive({
-    req(length(file_dir()))
+    req(file_dir())
+    input$tabpan1
     out <- rt_read(fs::path(file_dir(), "rivertile.nc"), group = "reaches")
-    updateSliderInput(session, "pixc_reach", max = length(unique(out$reach_id)),
-                      value = 1)
     out
+  })
+  atts_df <- reactive({
+    # req()
+    seltab <- input$tabpan1
+    if (seltab == "Pixels") {
+      outdf <- attr(pixc_df(), "atts")
+    } else if (seltab == "Nodes") {
+      outdf <-  attr(node_df(), "atts")
+    } else if (seltab == "Reaches") {
+      outdf <-  attr(reach_df(), "atts")()
+    } else {
+      outdf <- NULL
+    }
+    outdf
   })
   
   # Pixel product
   pixc_df <- reactive({
+    if (!length(file_dir())) return(NULL)
     join_pixc(fs::path(file_dir()), pcvname = "pixcvec.nc", 
               pixcname = "pixel_cloud.nc")
   })
-  cur_reaches <- reactive({
-    unique(reach_df()$reach_id)
+  cur_nodes <- reactive({
+    unique(pixc_df()$node_index)
   })
   
   
@@ -250,37 +287,99 @@ function(input, output, session) {
     xtk_gg + scale_color_manual(values = passpal(c(249, 264, 527)))
   })
   
-  output$node_scatter1 <- renderPlot({
-    node_df() %>% 
-      mutate(colorcol = reachpal(reach_id)) %>% 
-      ggplot(aes(x = node_id, y = height)) + 
-      geom_point(aes(color = colorcol)) + 
-      scale_color_identity()
+  # node scatter based on selected column
+  output$node_scatter1 <- renderPlotly({
+    req(node_df())
+    xvar <- input$node_xvar
+    xind <- which(node_xaxis_vals == xvar)
+    xlab <- paste0(node_xaxis_names[xind], node_xaxis_units[xind])
+    
+    yvar <- input$node_yvar
+    yind <- which(node_yaxis_vals == yvar)
+    ylab <- paste0(node_yaxis_names[yind], node_yaxis_units[yind])
+    yvar0 <- yvar # because I overwrite yvar
+    if (yvar == "custom") {
+      if (!length(input$data_dt_columns_selected)) {
+        showModal(modalDialog("Please select a column from the table below."))
+        yvar <- "node_id"
+      } else {
+        yvar <- names(node_df())[input$data_dt_columns_selected + 1]        
+      }
+      ylab <- yvar
+    }
+    yuncvar <- node_unc_vars[yind]
+
+    if (!length(yvar)) yvar <- "width"
+    
+    ggdata <- node_df() %>% 
+      mutate(colorcol = reachpal(reach_id),
+             text = sprintf("Reach: %s\nNode: %s", 
+                            reach_id, node_id))
+
+    gg <-  ggdata %>% 
+      ggplot(aes(x = !!sym(xvar), y = !!sym(yvar),
+                 color = colorcol, text = text)) +
+      scale_color_identity() + 
+      xlab(xlab) + ylab(ylab)
+    
+    if (yvar0 == "custom") {
+      # browser()
+      gg <- gg + 
+        geom_point()
+    } else {
+        gg <- gg + 
+          geom_pointrange(aes(ymin = !!sym(yvar) - !!sym(yuncvar),
+                              ymax = !!sym(yvar) + !!sym(yuncvar)))
+    }
+    out <- ggplotly(gg, tooltip = "text") %>% 
+      hide_guides()
+    out
   })
   
-  output$node_scatter2 <- renderPlot({
-    node_df() %>% 
-      mutate(colorcol = reachpal(reach_id)) %>% 
-      ggplot(aes(x = node_id, y = width)) + 
-      geom_point(aes(color = colorcol)) + 
-      scale_color_identity()
+  output$reach_scatter1 <- renderPlotly({
+    xvar <- input$reach_xvar
+    xind <- which(reach_xaxis_vals == xvar)
+    xlab <- paste0(reach_xaxis_names[xind], reach_xaxis_units[xind])
+    
+    yvar <- input$reach_yvar
+    yind <- which(reach_yaxis_vals == yvar)
+    ylab <- paste0(reach_yaxis_names[yind], reach_yaxis_units[yind])
+    yuncvar <- reach_unc_vars[yind]
+    yvar0 <- yvar
+    
+    if (yvar == "custom") {
+      if (!length(input$data_dt_columns_selected)) {
+        showModal(modalDialog("Please select a column from the table below."))
+        yvar <- "reach_id"
+      } else {
+        yvar <- names(reach_df())[input$data_dt_columns_selected + 1]        
+      }
+      ylab <- yvar
+    }
+    
+    ggdata <- reach_df() %>% 
+      mutate(colorcol = reachpal(reach_id),
+             text = sprintf("Reach: %s", reach_id))
+    
+    gg <- ggdata %>% 
+      ggplot(aes(x = !!sym(xvar), y = !!sym(yvar),
+                 color = colorcol, text = text)) +
+      scale_color_identity() +
+      ylab(ylab) + xlab(xlab)
+    
+    if (yvar0 == "custom") {
+      gg <- gg + 
+        geom_point()
+    } else {
+      gg <- gg + 
+        geom_pointrange(aes(ymin = !!sym(yvar) - !!sym(yuncvar),
+                            ymax = !!sym(yvar) + !!sym(yuncvar)))
+    }
+    out <- ggplotly(gg, tooltip = "text") %>% 
+      hide_guides()
+    out
   })
   
-  output$reach_scatter1 <- renderPlot({
-    reach_df() %>% 
-      mutate(colorcol = reachpal(reach_id)) %>% 
-      ggplot(aes(x = reach_id, y = slope)) + 
-      geom_point(aes(color = colorcol)) + 
-      scale_color_identity()
-  })
-  
-  output$reach_scatter2 <- renderPlot({
-    reach_df() %>% 
-      mutate(colorcol = reachpal(reach_id)) %>% 
-      ggplot(aes(x = reach_id, y = slope)) + 
-      geom_point(aes(color = colorcol)) + 
-      scale_color_identity()
-  })
   
   
 
@@ -290,42 +389,48 @@ function(input, output, session) {
   output$tile_table <- renderDT({
     dplyr::transmute(rundf, 
                      pass, tile, date)
-  }, selection = "single", rownames= FALSE)
+  }, autoHideNavigation = TRUE, selection = "single", rownames= FALSE)
   
-  # Node data
-  output$node_dt <- renderDT({
-    req(input$tabpan1 == "Nodes")
-    if (!length(node_df())) {
-      mtcars
-    } else {
-      node_df()
+  # Data table
+  data_df <- reactive({
+    req(input$tabpan1 %in% c("Pixels", "Nodes", "Reaches"))
+    if (!(length(input$tile_table_rows_selected))) {
+      # browser()
+      updateTabsetPanel(session, inputId = "tabpan1", selected = "Passes/Tiles")
+      showModal(modalDialog("First select a tile by clicking a row in the table."))
+      return(NULL)
     }
-  }, options = list(scrollX = TRUE, scrollY = TRUE), rownames = FALSE)
-
-  # Reach data
-  output$reach_dt <- renderDT({
-    req(input$tabpan1 == "Reaches")
-    if (!length(reach_df())) {
-      mtcars
+    seltab <- input$tabpan1
+    # browser()
+    if (seltab == "Pixels") {
+      # browser()
+      outdf <- pixc_df() %>% 
+        filter(node_index %in% (input$pixc_nodes + 0:15))
+    } else if (seltab == "Nodes") {
+      outdf <- node_df()
+    } else if (seltab == "Reaches") {
+      outdf <- reach_df()
     } else {
-      reach_df()
+      outdf <- NULL
     }
-  }, options = list(scrollX = TRUE, scrollY = TRUE),
-     selection = list(mode = "single", target = "column"), 
-  rownames = FALSE)
-  
-  # Pixel data
-  output$pixc_dt <- renderDT({
-    req(input$tabpan1 == "Pixels")
-    if (!length(pixc_df())) {
-      mtcars
-    } else {
-      pixc_df()
-    }
+    outdf
+  })
+  output$data_dt <- renderDT({
+    data_df()
   }, options = list(scrollX = TRUE, scrollY = TRUE),
   selection = list(mode = "single", target = "column"),
   rownames = FALSE)
   
+  # Attributes of selected variale
+  output$atts_info <- renderText({
+    selvar <- names(data_df())[input$data_dt_columns_selected + 1]
+    if (!length(selvar)) return("")
+    # if (input$tabpan1 == "Pixels") browser()
+    tofmtdf <- dplyr::filter(atts_df(), 
+                             name == selvar)
+    fmt_atts(tofmtdf)
+  })
+
   
 }
 
