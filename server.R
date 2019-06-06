@@ -15,7 +15,8 @@ function(input, output, session) {
   
   # Observer for prior database nodes
   observeEvent("prior_node" %in% input$maplayers, {
-    proxy <- leafletProxy("map")
+    proxy <- leafletProxy("map") %>% 
+      clearGroup("priornodes")
     if ("prior_node" %in% input$maplayers) {
       proxy <- proxy %>% 
         addCircles(fillColor = ~reachpal(reach_id), radius = 100, 
@@ -23,48 +24,58 @@ function(input, output, session) {
                    popup = ~paste0("Node: ", node_id, "<br/>", 
                                    "Reach: ", reach_id),
                    group = "priornodes")
-    } else {
-      proxy <- proxy %>% 
-        clearGroup("priornodes")
-    }
+    } 
     return(proxy)
   })
   
+  # # Observer for prior database nodes in selected tile
+  # observeEvent(input$tile_table_rows_selected, {
+  #   req(node_df())
+  #   proxy <- leafletProxy("map") %>% 
+  #     clearGroup("priornodes_highlight")
+  #   if (length(input$tile_table_rows_selected)) {
+  #     proxy <- proxy %>% 
+  #       addCircles(fillColor = ~reachpal(reach_id), radius = 100, 
+  #                  stroke = TRUE, fillOpacity = 0.4, 
+  #                  data = dplyr::filter(nodesf, node_id %in% unique(node_df()$node_id)), 
+  #                  popup = ~paste0("Node: ", node_id, "<br/>", 
+  #                                  "Reach: ", reach_id),
+  #                  group = "priornodes_highlight")
+  #   } 
+  #   return(proxy)
+  # })
+  
   # Observer for prior database centerlines
   observeEvent("prior_ctl" %in% input$maplayers, {
-    proxy <- leafletProxy("map")
+    proxy <- leafletProxy("map") %>% 
+      clearGroup("priorcl")
     if ("prior_ctl" %in% input$maplayers) {
       proxy <- proxy %>% 
         addPolylines(color = ~reachpal(reach_id), weight = 3, data = clsf, 
                      opacity = 0.85, group = "priorcl",
                      popup = ~paste0("Reach: ", reach_id))
-    } else {
-      proxy <- proxy %>% 
-        clearGroup("priorcl")
-    }
+    } 
     
     return(proxy)
   })
   
   # Observer for orbit tracks
   observeEvent("passes" %in% input$maplayers, {
-    proxy <- leafletProxy("map")
+    proxy <- leafletProxy("map") %>% 
+      clearGroup("passes")
     if ("passes" %in% input$maplayers) {
       proxy <- proxy %>% 
         addPolylines(data = sacpasses_sf, color = ~passpal(pass), 
                      popup = ~paste("Passs ", pass), group = "passes")
-    } else {
-      proxy <- proxy %>% 
-        clearGroup("passes")
-    }
-
+    } 
     proxy
   })
   
   # Observer for tiles
   observe({
-    req("tiles" %in% input$maplayers)
-    proxy <- leafletProxy("map")
+    # req("tiles" %in% input$maplayers)
+    proxy <- leafletProxy("map") %>% 
+      clearGroup("tiles")
     if ("tiles" %in% input$maplayers) {
       proxy <- proxy %>% 
         add_swot_tile(tilelist$`51`$nadir1, tilelist$`51`$nadir2, 
@@ -87,15 +98,29 @@ function(input, output, session) {
                       group = "tiles", stroke = FALSE, 
                       fillColor = passpal("527"),
                       popup = "Pass 527, Tile 001R")
-    } else {
-      proxy <- proxy %>% 
-        clearGroup("tiles")
     }
     
     proxy
   })
   
-  
+  # Observer for selected tile
+  observe({
+    # req("tiles" %in% input$maplayers)
+    proxy <- leafletProxy("map") %>% 
+      clearGroup("tiles_selected")
+    selrow <- input$tile_table_rows_selected
+    if ("tiles" %in% input$maplayers && length(selrow)) {
+      tilenum <- as.character((51:54)[selrow])
+      # browser()
+      proxy <- proxy %>% 
+        add_swot_tile(tilelist[[tilenum]]$nadir1, tilelist[[tilenum]]$nadir2, 
+                      tilelist[[tilenum]]$heading, tilelist[[tilenum]]$half,
+                      group = "tiles_selected", stroke = TRUE, fill = FALSE,
+                      color = "#888888")
+    }
+    
+    proxy
+  })
   
   
   # Observer for nodes in tile on map
@@ -103,7 +128,9 @@ function(input, output, session) {
                             "area_total", "xtrk_dist", ""), 
                           collapse = ": %s<br/>")
   observeEvent("rt_node" %in% input$maplayers, {
-    proxy <- leafletProxy("map")
+    proxy <- leafletProxy("map") %>% 
+      clearGroup("nodedata")
+    
     if ("rt_node" %in% input$maplayers) {
       proxy <- proxy %>% 
         addCircles(~longitude, ~latitude, fillColor = ~reachpal(reach_id), 
@@ -112,9 +139,6 @@ function(input, output, session) {
                    popup = ~sprintf(sprstring_node, node_id, reach_id, height,
                                     width, area_total, xtrk_dist),
                    group = "nodedata")
-    } else {
-      proxy <- proxy %>% 
-        clearGroup("nodedata")
     }
 
     return(proxy)
@@ -178,7 +202,8 @@ function(input, output, session) {
                             "area", ""), 
                           collapse = ": %s<br/>")
   observeEvent("rt_reach" %in% input$maplayers, {
-    proxy <- leafletProxy("map")
+    proxy <- leafletProxy("map") %>% 
+      clearGroup("reaches")
 
     if ("rt_reach" %in% input$maplayers) {
       reachdata <- clsf %>% 
@@ -189,9 +214,6 @@ function(input, output, session) {
                      opacity = 0.85, group = "reaches", 
                      popup = ~sprintf(sprstring_reach, reach_id, height, width,
                                       slope, area_total))
-    } else {
-      proxy <- proxy %>% 
-        clearGroup("reaches")
     }
     
     return(proxy)
@@ -262,11 +284,15 @@ function(input, output, session) {
     } else if (seltab == "Nodes") {
       outdf <-  attr(node_df(), "atts")
     } else if (seltab == "Reaches") {
-      outdf <-  attr(reach_df(), "atts")()
+      outdf <-  attr(reach_df(), "atts")
     } else {
       outdf <- NULL
     }
     outdf
+  })
+  expert_atts <- reactive({
+    out <- atts_df()$name[atts_df()$tag_basic_expert == "Expert"]
+    out <- intersect(out, names(data_df()))
   })
   
   # Pixel product
@@ -275,6 +301,29 @@ function(input, output, session) {
     join_pixc(fs::path(file_dir()), pcvname = "pixcvec.nc", 
               pixcname = "pixel_cloud.nc")
   })
+  pixcvec_df <- reactive({
+    req(file_dir())
+    pixcvec_read(fs::path(file_dir(), "pixcvec.nc"))
+  })
+  pixcvec_cols <- reactive({
+    req(pixcvec_df())
+    names(pixcvec_df())
+  })
+  pixc_only_cols <- reactive({
+    req(pixcvec_df())
+    req(pixc_df())
+    c("azimuth_index", "range_index", 
+      setdiff(names(pixc_df()), names(pixcvec_df())))
+  })
+  pixc_columns <- reactive({
+    req(input$tabpan1 == "Pixels")
+    namelist <- list(pixc = pixc_only_cols(), pixcvec = pixcvec_cols())
+    keepnames <- unname(namelist[input$pixc_columns_select])
+    if (length(keepnames) == 1) return(keepnames[[1]])
+    out <- do.call(union, args = keepnames)
+    out
+  })
+  
   cur_nodes <- reactive({
     unique(pixc_df()$node_index)
   })
@@ -405,7 +454,8 @@ function(input, output, session) {
     if (seltab == "Pixels") {
       # browser()
       outdf <- pixc_df() %>% 
-        filter(node_index %in% (input$pixc_nodes + 0:15))
+        filter(node_index %in% (input$pixc_nodes + 0:15)) %>% 
+        select(pixc_columns())
     } else if (seltab == "Nodes") {
       outdf <- node_df()
     } else if (seltab == "Reaches") {
@@ -416,16 +466,18 @@ function(input, output, session) {
     outdf
   })
   output$data_dt <- renderDT({
-    data_df()
-  }, options = list(scrollX = TRUE, scrollY = TRUE),
-  selection = list(mode = "single", target = "column"),
-  rownames = FALSE)
+    # browser()
+    datatable(data_df(), options = list(scrollX = TRUE, scrollY = TRUE),
+              selection = list(mode = "single", target = "column"),
+              rownames = FALSE) %>% 
+      formatStyle(expert_atts(), color = "red")
+  })
   
   # Attributes of selected variale
   output$atts_info <- renderText({
     selvar <- names(data_df())[input$data_dt_columns_selected + 1]
     if (!length(selvar)) return("")
-    # if (input$tabpan1 == "Pixels") browser()
+    # if (input$tabpan1 == "Reaches") browser()
     tofmtdf <- dplyr::filter(atts_df(), 
                              name == selvar)
     fmt_atts(tofmtdf)

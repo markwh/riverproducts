@@ -28,7 +28,12 @@ body <- dashboardBody(
                                 includeMarkdown("mdfiles/pixels.md"),
                                 sliderInput("pixc_nodes", "Nodes to Show",
                                             min = 1, max = 1, 
-                                            value = 1, step = 1)
+                                            value = 1, step = 1),
+                                checkboxGroupInput("pixc_columns_select", 
+                                                   "Table Columns To Display",
+                                                   choiceNames = c("PIXC", "PIXCVec"),
+                                                   choiceValues = c("pixc", "pixcvec"),
+                                                   selected = c("pixc", "pixcvec"))
                                 ),
                        tabPanel("Nodes",
                                 includeMarkdown("mdfiles/nodes.md"),
