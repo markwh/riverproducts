@@ -147,31 +147,46 @@ function(input, output, session) {
   # Observer for pixc, pixcvec
   sprstring_pix <- paste(c("node_index", "classification", "height", 
                            "pixel_area", "water_frac",
-                           "cross_track", ""), collapse = ": %s<br/>")
+                           "cross_track", "range_index", "azimuth_index", ""), 
+                         collapse = ": %s<br/>")
   pixlyr <- FALSE
   pixnode <- 1
+  geoloc <- "med"
   observe({
     newlyr <- "pixels" %in% input$maplayers
     newnode <- input$pixc_nodes
+    # input$improve_geoloc
     # browser()
     proxy <- leafletProxy("map")
-    if (pixlyr == newlyr && newnode == pixnode) return(proxy)
+    if (pixlyr == newlyr && newnode == pixnode && 
+        input$improve_geoloc == geoloc) return(proxy)
     pixlyr <<- newlyr
     pixnode <<- newnode
+    geoloc <<- input$improve_geoloc
     
     proxy <- proxy %>% 
       clearGroup("pixcdata")
     if (!length(file_dir()) || !("pixels" %in% input$maplayers)) return(proxy)
     # browser()
+    lonvar <- ifelse(input$improve_geoloc == "wd", 
+                     "longitude_vectorproc", "longitude")
+    latvar <- ifelse(input$improve_geoloc == "wd", 
+                     "latitude_vectorproc", "latitude")
+    plotdat <- pixc_df_filtered()
+    if (input$improve_geoloc == "wd") {
+      plotdat$latitude <- plotdat$latitude_vectorproc
+      plotdat$longitude <- plotdat$longitude_vectorproc
+    }
+    
     proxy <- proxy %>% 
-      addCircles(~longitude, ~latitude, fillColor = ~classpal(classification), 
+      addCircles(~longitude, ~latitude, 
+                 fillColor = ~classpal(classification), 
                  popup = ~sprintf(sprstring_pix, node_index, classification, height, 
-                                  pixel_area, water_frac, cross_track), 
+                                  pixel_area, water_frac, cross_track,
+                                  range_index, azimuth_index), 
                  radius = ~sqrt(pixel_area / pi), 
                  stroke = FALSE, fillOpacity = 0.9, 
-                 data = filter(pixc_df(), 
-                               # reach_index == reach_index[1]),
-                               node_index %in% (input$pixc_nodes + 0:15)),
+                 data = plotdat,
                  group = "pixcdata")
     proxy
   })
@@ -296,28 +311,65 @@ function(input, output, session) {
   })
   
   # Pixel product
-  pixc_df <- reactive({
-    if (!length(file_dir())) return(NULL)
-    join_pixc(fs::path(file_dir()), pcvname = "pixcvec.nc", 
-              pixcname = "pixel_cloud.nc")
-  })
   pixcvec_df <- reactive({
     req(file_dir())
     pixcvec_read(fs::path(file_dir(), "pixcvec.nc"))
   })
-  pixcvec_cols <- reactive({
+  pixc_df <- reactive({
+    req(file_dir())
     req(pixcvec_df())
-    names(pixcvec_df())
+    pixc_full <- pixc_read(fs::path(file_dir(), "pixel_cloud.nc")) %>% 
+      dplyr::mutate(classification = as.factor(classification))
+    
+    outdf <- left_join(pixc_full, pixcvec_df(), 
+                       by = c("azimuth_index", "range_index"))
+    outattdf <- rivertile:::bind_rows2(
+      list(attr(pixcvec_df(), "atts"), attr(pixc_full, "atts")),
+      addMissing = TRUE
+    )
+    
+    out <- structure(outdf, atts = outattdf)
+    out
   })
+  pixc_df_filtered <- reactive({
+    req(pixc_df())
+    req(input$pixc_nodes)
+    pixc_df() %>% 
+      filter(node_index %in% (input$pixc_nodes + 0:15))
+  })
+  
+  # pixcvec_cols <- reactive({
+  #   req(pixcvec_df())
+  #   names(pixcvec_df())
+  # })
+  # 
+  # # Entire pixel cloud
+  # pixcdf_full <- reactive({
+  #   req(file_dir())
+  #   pixc_read(fs::path(file_dir(), "pixel_cloud.nc"), 
+  #             group = "pixel_cloud") %>% 
+  #     mutate(classification = as.factor(classification))
+  # })
+  # pixcdf_sset <- reactive({
+  #   req(pixcdf_full())
+  #   req(pixc_df_filtered())
+  #   pixcdf_full() %>% 
+  #     filter(range_index >= min(pixc_df_filtered()$range_index),
+  #            range_index <= max(pixc_df_filtered()$range_index),
+  #            azimuth_index >= min(pixc_df_filtered()$azimuth_index),
+  #            azimuth_index <= max(pixc_df_filtered()$azimuth_index))
+  # })
+  # 
   pixc_only_cols <- reactive({
     req(pixcvec_df())
     req(pixc_df())
-    c("azimuth_index", "range_index", 
+    c("azimuth_index", "range_index",
       setdiff(names(pixc_df()), names(pixcvec_df())))
   })
   pixc_columns <- reactive({
     req(input$tabpan1 == "Pixels")
-    namelist <- list(pixc = pixc_only_cols(), pixcvec = pixcvec_cols())
+    namelist <- list(pixc = pixc_only_cols(), 
+                     pixcvec = names(pixcvec_df()))
     keepnames <- unname(namelist[input$pixc_columns_select])
     if (length(keepnames) == 1) return(keepnames[[1]])
     out <- do.call(union, args = keepnames)
@@ -429,7 +481,34 @@ function(input, output, session) {
     out
   })
   
+  # Range-azimuth raster
   
+  output$slantplane <- renderPlot({
+    req(pixc_df())
+    pixc_color <- input$pixc_color
+    
+    
+    if (pixc_color != "classification") {
+      if (!length(input$data_dt_columns_selected)) {
+        showModal(modalDialog("Please select a column from the table below."))
+        pixc_color <- "classification"
+      } else {
+        pixc_color <- names(data_df())[input$data_dt_columns_selected + 1]        
+      }
+    }
+    
+    pixc_df() %>% 
+      dplyr::filter(range_index >= min(pixc_df_filtered()$range_index - 10),
+                    range_index <= max(pixc_df_filtered()$range_index + 10),
+                    azimuth_index >= min(pixc_df_filtered()$azimuth_index - 10),
+                    azimuth_index <= max(pixc_df_filtered()$azimuth_index + 10)) %>% 
+      dplyr::mutate(alpha = ifelse(node_index %in% (input$pixc_nodes + 0:15), 1, 0.65)) %>% 
+      ggplot(aes(x = range_index, y = azimuth_index, 
+                 fill = !!sym(pixc_color), alpha = alpha)) +
+      geom_raster() +
+      scale_alpha_identity() +
+      coord_equal()
+  })
   
 
   # Tables ------------------------------------------------------------------
@@ -453,8 +532,7 @@ function(input, output, session) {
     # browser()
     if (seltab == "Pixels") {
       # browser()
-      outdf <- pixc_df() %>% 
-        filter(node_index %in% (input$pixc_nodes + 0:15)) %>% 
+      outdf <- pixc_df() %>% # TODO: filter this using a proxy (don't filter outright!)
         select(pixc_columns())
     } else if (seltab == "Nodes") {
       outdf <- node_df()
@@ -483,6 +561,8 @@ function(input, output, session) {
     fmt_atts(tofmtdf)
   })
 
+  
+  
   
 }
 

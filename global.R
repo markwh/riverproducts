@@ -34,9 +34,11 @@ classlabs <- c("gdem water", "land near water", "water near land",
 classpal <- colorFactor(palette = "Set1", domain = classes)
 classcolvec <- setNames(classpal(classes), classes)
 
-fmt_pixc_data <- function(node_index, height, pixel_area, water_frac, cross_track) {
+fmt_pixc_data <- function(node_index, height, pixel_area, 
+                          water_frac, cross_track, 
+                          range_index, azimuth_index) {
   annotvars <- c("node_index", "height", "pixel_area", "water_frac",
-                 "cross_track")
+                 "cross_track", "range_index", "azimuth_index")
   paste(annotvars,
         sep = ": ", collapse = "<br/>")
 }
